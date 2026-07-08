@@ -35,7 +35,9 @@ def _get_assigned_faculty_ids(conn: sqlite3.Connection, exam_id: int) -> list:
 def _eligible_faculty(conn: sqlite3.Connection,
                       exam: sqlite3.Row,
                       exclude_ids: list) -> list:
-    """Return available faculty with no conflict and under their weekly cap."""
+    """Return available faculty with no conflict and under their weekly cap.
+    Sorted by ascending weekly duty count (lightest load first).
+    """
     week_start, week_end = _week_bounds(exam["date"])
     candidates = []
     for f in db.get_available_faculty(conn):
@@ -54,26 +56,39 @@ def _eligible_faculty(conn: sqlite3.Connection,
 
 
 def _auto_allocate(conn: sqlite3.Connection, exam: sqlite3.Row) -> list:
-    """Fill all required invigilator slots for an exam."""
-    messages     = []
+    """Fill all required invigilator slots for an exam.
+    Returns a list of result messages (success strings and/or warnings).
+    Every assignment is committed to the duties table immediately.
+    """
     assigned_ids = _get_assigned_faculty_ids(conn, exam["id"])
     slots_needed = exam["invigilator_count"] - len(assigned_ids)
 
     if slots_needed <= 0:
-        return ["All slots already filled."]
+        return [("info", "All slots are already filled for this exam.")]
+
+    available_count = len(db.get_available_faculty(conn))
+    if available_count == 0:
+        return [("warning", "No faculty members are marked as available. "
+                            "Please update faculty availability first.")]
 
     eligible = _eligible_faculty(conn, exam, assigned_ids)
+    if not eligible:
+        return [("warning",
+                 "No eligible faculty found. All available faculty either have "
+                 "a time conflict with this exam or have reached their weekly duty limit.")]
+
+    messages = []
     for i in range(min(slots_needed, len(eligible))):
         f = eligible[i]["row"]
         db.assign_duty(conn, exam["id"], f["id"])
-        messages.append(f"✅ Assigned **{f['name']}** ({f['department']})")
+        messages.append(("success",
+                         f"Assigned {f['name']} ({f['department']})"))
 
     shortfall = slots_needed - len(eligible)
     if shortfall > 0:
-        messages.append(
-            f"⚠️ Could not fill **{shortfall}** slot(s) — "
-            "no eligible faculty available."
-        )
+        messages.append(("warning",
+                         f"Could not fill {shortfall} slot(s) — "
+                         "not enough eligible faculty available."))
     return messages
 
 
@@ -82,8 +97,21 @@ def _auto_allocate(conn: sqlite3.Connection, exam: sqlite3.Row) -> list:
 def render(conn: sqlite3.Connection) -> None:
     exams = db.get_all_exams(conn)
     if not exams:
-        st.warning("No exams scheduled. Add exams first.")
+        st.warning("No exams scheduled. Please add exams first.")
         return
+
+    # ── Display allocation messages that survived the last st.rerun() ────────
+    # st.rerun() discards any widget output rendered in the same pass as the
+    # button click.  We store messages in session_state so they are shown on
+    # the very next render pass (after the rerun) and then cleared.
+    pending = st.session_state.pop("alloc_messages", [])
+    for kind, text in pending:
+        if kind == "success":
+            st.success(text)
+        elif kind == "warning":
+            st.warning(text)
+        else:
+            st.info(text)
 
     for exam in exams:
         eid    = exam["id"]
@@ -115,18 +143,22 @@ def render(conn: sqlite3.Connection) -> None:
         </div>""", unsafe_allow_html=True)
 
         col_alloc, col_clear, _ = st.columns([2, 2, 4])
+
         if col_alloc.button("⚡ Auto-Allocate", key=f"alloc_{eid}"):
             msgs = _auto_allocate(conn, exam)
-            for m in msgs:
-                st.markdown(m)
+            # Store messages in session_state BEFORE rerun so they survive it
+            st.session_state["alloc_messages"] = msgs
             st.rerun()
 
         if col_clear.button("🗑 Clear Duties", key=f"clear_{eid}"):
             conn.execute("DELETE FROM duties WHERE exam_id = ?", (eid,))
             conn.commit()
+            st.session_state["alloc_messages"] = [
+                ("info", f"All duties cleared for '{exam['subject']}'.")
+            ]
             st.rerun()
 
-        # Refresh duties after possible allocation
+        # Always re-fetch duties from DB after any possible allocation
         duties = db.get_duties_for_exam(conn, eid)
         if not duties:
             st.caption("  No duties assigned yet.")
@@ -146,7 +178,7 @@ def render(conn: sqlite3.Connection) -> None:
                     )
                     continue
 
-                # Check if assigned faculty is now absent
+                # Check if the assigned faculty is now marked absent
                 fac_row = conn.execute(
                     "SELECT is_available FROM faculty WHERE id = "
                     "(SELECT faculty_id FROM duties WHERE id = ?)", (did,)
@@ -182,10 +214,16 @@ def render(conn: sqlite3.Connection) -> None:
                                 f"Original faculty absent. Auto-replaced with {rec['name']}.",
                             )
                             db.assign_duty(conn, eid, rec["id"])
-                            st.success(f"Replacement accepted: {rec['name']}")
+                            st.session_state["alloc_messages"] = [
+                                ("success",
+                                 f"Replacement accepted: {rec['name']} assigned.")
+                            ]
                             st.rerun()
                     else:
-                        st.warning("No eligible replacement found.")
+                        st.warning(
+                            "No eligible replacement found for "
+                            f"{duty['faculty_name']}."
+                        )
                 else:
                     st.markdown(
                         f"&nbsp;&nbsp;👤 **{duty['faculty_name']}** "

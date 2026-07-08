@@ -93,6 +93,109 @@ st.markdown("""
     /* ── Hide Streamlit chrome ── */
     #MainMenu, footer, header { visibility: hidden; }
     [data-testid="stDecoration"] { display: none; }
+
+    /* ══════════════════════════════════════════════════════════════
+       ISSUE 3 FIX — Force white background + black text on every
+       Streamlit input widget regardless of the active theme.
+       These selectors target Streamlit's internal DOM structure.
+    ══════════════════════════════════════════════════════════════ */
+
+    /* Text input */
+    [data-testid="stTextInput"] input {
+        background-color: #ffffff !important;
+        color: #1e293b !important;
+        border: 1px solid #cbd5e1 !important;
+    }
+    [data-testid="stTextInput"] input::placeholder {
+        color: #94a3b8 !important;
+    }
+
+    /* Text area */
+    [data-testid="stTextArea"] textarea {
+        background-color: #ffffff !important;
+        color: #1e293b !important;
+        border: 1px solid #cbd5e1 !important;
+    }
+    [data-testid="stTextArea"] textarea::placeholder {
+        color: #94a3b8 !important;
+    }
+
+    /* Number input */
+    [data-testid="stNumberInput"] input {
+        background-color: #ffffff !important;
+        color: #1e293b !important;
+        border: 1px solid #cbd5e1 !important;
+    }
+
+    /* Selectbox — the visible button face */
+    [data-testid="stSelectbox"] > div > div {
+        background-color: #ffffff !important;
+        color: #1e293b !important;
+        border: 1px solid #cbd5e1 !important;
+    }
+    /* Selectbox dropdown list items */
+    [data-testid="stSelectbox"] li {
+        color: #1e293b !important;
+        background-color: #ffffff !important;
+    }
+
+    /* Date input */
+    [data-testid="stDateInput"] input {
+        background-color: #ffffff !important;
+        color: #1e293b !important;
+        border: 1px solid #cbd5e1 !important;
+    }
+    [data-testid="stDateInput"] > div > div {
+        background-color: #ffffff !important;
+    }
+
+    /* Time input */
+    [data-testid="stTimeInput"] input {
+        background-color: #ffffff !important;
+        color: #1e293b !important;
+        border: 1px solid #cbd5e1 !important;
+    }
+    [data-testid="stTimeInput"] > div > div {
+        background-color: #ffffff !important;
+    }
+
+    /* Multiselect tags + input */
+    [data-testid="stMultiSelect"] > div > div {
+        background-color: #ffffff !important;
+        color: #1e293b !important;
+        border: 1px solid #cbd5e1 !important;
+    }
+
+    /* Widget labels — cover p, label, span, div children so no version
+       of Streamlit can hide them via the sidebar wildcard rule */
+    .main [data-testid="stWidgetLabel"],
+    .main [data-testid="stWidgetLabel"] *,
+    .main .stTextInput label,
+    .main .stSelectbox label,
+    .main .stDateInput label,
+    .main .stTimeInput label,
+    .main .stNumberInput label,
+    .main .stTextArea label {
+        color: #1e293b !important;
+    }
+
+    /* Date / time picker calendar and clock overlays are rendered as
+       portals appended to <body>.  Scope them explicitly so the sidebar
+       wildcard colour never bleeds into them. */
+    [data-baseweb="calendar"],
+    [data-baseweb="calendar"] *,
+    [data-baseweb="time-picker"],
+    [data-baseweb="time-picker"] * {
+        color: #1e293b !important;
+        background-color: #ffffff !important;
+    }
+
+    /* Expander header text */
+    .main [data-testid="stExpander"] summary p,
+    .main [data-testid="stExpander"] summary span {
+        color: #1e3a5f !important;
+        font-weight: 600;
+    }
 </style>
 """, unsafe_allow_html=True)
 
